@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>Admin – podsumowanie</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><h1>📊 Podsumowanie zamówień</h1></header>
+<main>
+<section id="login"><div class="info">Panel admina – podaj hasło.</div>
+<input id="pw" type="password" placeholder="Hasło" autocomplete="current-password">
+<p id="lerr" class="er hide">Złe hasło.</p>
+<div class="row"><button class="btn" id="go">Wejdź</button></div></section>
+
+<section id="panel" class="hide">
+<div class="row" style="margin:0 0 8px"><button class="btn sec" id="refresh">🔄 Odśwież</button><a class="btn sec" href="index.html" style="text-align:center;text-decoration:none">← Sklep</a></div>
+<p id="status" class="mut"></p>
+<div class="sum"><div><b id="sBot">0</b>butelek razem</div><div><b id="sOrd">0</b>zamówień</div><div><b id="sFl">0</b>różnych smaków</div></div>
+<h3>Co i ile zamówiono</h3>
+<div style="overflow-x:auto"><table><thead><tr><th>Smak</th><th style="text-align:right">Szt.</th></tr></thead><tbody id="sumBody"></tbody></table></div>
+<h3>Kto co zamówił</h3><div id="ordList"></div>
+<h3>Import z kodów</h3>
+<p class="mut" style="margin:0">Jeśli ktoś przysłał kod zamówienia (zaczyna się od LQ:), wklej go tu – po jednym w linii.</p>
+<textarea id="imp" rows="3"></textarea>
+<div class="row"><button class="btn" id="impBtn">Dodaj do podsumowania</button></div>
+</section>
+</main>
+<script src="config.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+let orders=[],imported=[],timer=null;
+async function sha(s){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));return[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+async function login(){
+  if(await sha($('pw').value)===ADMIN_HASH){sessionStorage.setItem('lqa',ADMIN_HASH);open()}else $('lerr').classList.remove('hide');
+}
+function open(){$('login').classList.add('hide');$('panel').classList.remove('hide');load();timer=setInterval(load,20000)}
+async function load(){
+  if(!DB_URL){$('status').textContent='Brak DB_URL w config.js – baza nie jest podłączona.';draw();return}
+  try{
+    const r=await fetch(DB_URL+'/orders.json');const d=await r.json();
+    orders=d?Object.values(d):[];$('status').textContent='Zaktualizowano: '+new Date().toLocaleTimeString('pl-PL');
+  }catch(e){$('status').textContent='Błąd połączenia z bazą.'}
+  draw();
+}
+function draw(){
+  const all=orders.concat(imported),tot={};let bot=0;
+  all.forEach(o=>Object.entries(o.items||{}).forEach(([f,n])=>{tot[f]=(tot[f]||0)+n;bot+=n}));
+  $('sBot').textContent=bot;$('sOrd').textContent=all.length;$('sFl').textContent=Object.keys(tot).length;
+  const tb=$('sumBody');tb.innerHTML='';
+  const ent=Object.entries(tot).sort((a,b)=>b[1]-a[1]);
+  if(!ent.length)tb.innerHTML='<tr><td colspan="2" class="mut">Na razie brak zamówień.</td></tr>';
+  ent.forEach(([f,n])=>{const tr=document.createElement('tr'),a=document.createElement('td'),b=document.createElement('td');a.textContent=f;b.className='r';b.textContent=n;tr.append(a,b);tb.append(tr)});
+  const ol=$('ordList');ol.innerHTML='';
+  all.slice().sort((a,b)=>b.ts-a.ts).forEach(o=>{
+    const d=document.createElement('div');d.className='ord';
+    const h=document.createElement('b');h.textContent=o.name;
+    const s=document.createElement('small');s.className='mut';s.textContent=' · '+new Date(o.ts).toLocaleString('pl-PL');
+    const l=document.createElement('div');l.textContent=Object.entries(o.items||{}).map(([f,n])=>n+'× '+f).join(', ');
+    d.append(h,s,l);
+    if(o.note){const n=document.createElement('small');n.className='mut';n.textContent='Uwagi: '+o.note;d.append(n)}
+    ol.append(d);
+  });
+}
+$('go').onclick=login;$('pw').onkeydown=e=>{if(e.key==='Enter')login()};
+$('refresh').onclick=load;
+$('impBtn').onclick=()=>{
+  $('imp').value.split(/\n+/).map(x=>x.trim()).filter(x=>x.startsWith('LQ:')).forEach(x=>{try{const o=JSON.parse(decodeURIComponent(escape(atob(x.slice(3)))));if(o&&o.items)imported.push(o)}catch(e){}});
+  $('imp').value='';draw();
+};
+if(sessionStorage.getItem('lqa')===ADMIN_HASH)open();
+</script></body></html>
